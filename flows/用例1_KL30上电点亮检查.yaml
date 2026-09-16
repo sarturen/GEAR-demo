@@ -1,0 +1,22 @@
+# 用例 1：KL30 上电，等 adb shell 起来，确认屏幕2 点亮。
+#
+# 屏幕没亮就是异常：截图存档 + 拉取 adb 日志，供第二天排查。
+# 判定用的是设备自己的亮度基线，"未上电"和"亮着但显示黑画面"在画面上无法
+# 区分，所以失败信息会同时给出平坦度和亮度读数。
+
+name: 用例1 KL30 上电点亮检查
+device: box1
+
+on_failure:
+  - snapshot: {screens: all, note: KL30 上电后屏幕2 未点亮}
+  - adb_logs: {}
+
+steps:
+  - log: 合上 KL30 常电
+  - relay: {resource: KL30, action: "on"}
+
+  - log: 等待 adb shell 可用（不只是枚举到设备）
+  - adb_wait: {timeout: 60}
+
+  - log: 确认屏幕2 点亮并保持
+  - expect_screen: {screen: 屏幕2, state: lit, timeout: 20}

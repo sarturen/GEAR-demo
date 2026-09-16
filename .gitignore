@@ -1,0 +1,17 @@
+# 虚拟环境（846MB，不入库）
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 运行产物：失败证据目录由程序自动创建
+evidence/
+
+# 本机 Claude Code 设置（含本机权限授予，每台机器不同）
+.claude/settings.local.json
+
+# 编辑器
+.vscode/
+.idea/

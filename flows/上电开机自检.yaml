@@ -1,0 +1,34 @@
+# 通用开机自检：上电、起系统、验自检命令、确认画面没卡死。
+# 演示各个步骤类型怎么组合。
+
+name: 上电开机自检
+device: box1
+
+on_failure:
+  - snapshot: {screens: all}
+  - adb_logs: {}
+
+steps:
+  - log: 给被测板卡上电
+  - relay: {action: all_on}
+
+  - wait: 3
+
+  - log: 确认屏幕点亮且没有黑屏
+  - expect_screen: {screen: 屏幕1, state: lit, timeout: 20}
+
+  - log: 等待串口启动日志
+  - serial_expect: {console: SOC, regex: "login:|ready", timeout: 30}
+
+  - log: 下发自检命令
+  - serial_write: {console: SOC, text: "selftest\r\n"}
+  - serial_expect: {console: SOC, contains: SELFTEST PASS, timeout: 30}
+
+  - log: 确认系统已经起来
+  - adb: {command: "shell getprop sys.boot_completed", expect: "^1", timeout: 30}
+
+  - log: 确认画面没有卡死
+  - expect_screen: {screen: 屏幕1, state: no_freeze, timeout: 15}
+
+  - log: 断电
+  - relay: {action: all_off}

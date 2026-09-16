@@ -1,0 +1,48 @@
+# 用例 3：反复压测 KL15 上下电，看屏幕亮灭是否符合预期，
+# 同时通过 MCU 和 SOC 串口的关键字判断系统有没有异常复位。
+#
+# 复位关键字用 watch 后台守护：横幅往往在继电器恢复后一两秒才打印，
+# 落在任何逐步断言的窗口之外，而且轮询式断言会丢掉到达时间。
+# 两个守护在循环前挂上，循环结束后统一判定。
+
+name: 用例3 KL15 反复上下电压测
+device: box1
+
+on_failure:
+  - snapshot: {screens: all, note: 压测中出现异常}
+  - adb_logs: {}
+
+steps:
+  - log: 上常电并等待系统起来
+  - relay: {resource: KL30, action: "on"}
+  - adb_wait: {timeout: 60}
+  - expect_screen: {screen: 屏幕2, state: lit, timeout: 20}
+
+  - log: 挂上复位关键字守护
+  - watch: {id: mcu_reset, console: MCU, regex: "reset|reboot|panic|watchdog"}
+  - watch: {id: soc_panic, console: SOC, regex: "Kernel panic|BUG:|watchdog|reboot"}
+
+  - repeat:
+      times: 20
+      name: KL15 上下电
+      steps:
+        - mark: cycle
+        - relay: {resource: KL15, action: "off"}
+        - wait: 3
+        - relay: {resource: KL15, action: "on"}
+        - log: 屏幕2 应当先黑后亮
+        - expect_screen:
+            screen: 屏幕2
+            sequence: [dark, lit]
+            timeout: 20
+            since: cycle
+        - log: 其余屏幕应当全程保持点亮
+        - expect_screen: {screen: 屏幕1, state: lit, timeout: 4}
+        - expect_screen: {screen: 屏幕3, state: lit, timeout: 4}
+
+  - log: 压测结束，检查系统是否出现过异常复位
+  - expect_watch: {id: mcu_reset, at_most: 0}
+  - expect_watch: {id: soc_panic, at_most: 0}
+
+  - log: 收尾断电
+  - relay: {action: all_off}

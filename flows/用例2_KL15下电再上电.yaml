@@ -1,0 +1,34 @@
+# 用例 2：KL15 下电，5s 后上电，屏幕应当先黑后亮。
+#
+# mark 落点在下电之前：sequence 要覆盖的是"下电→变黑→等待→上电→复亮"这一整段，
+# 而不是从"上电"那一步才开始看。锚在 mark 上，中间的等待才不会把观察切断。
+
+name: 用例2 KL15 下电5s再上电
+device: box1
+
+on_failure:
+  - snapshot: {screens: all, note: KL15 上电后长时间不亮屏}
+  - adb_logs: {}
+
+steps:
+  - log: 先给 KL30 常电，保证系统有电
+  - relay: {resource: KL30, action: "on"}
+  - adb_wait: {timeout: 60}
+  - expect_screen: {screen: 屏幕2, state: lit, timeout: 20}
+
+  - mark: power_cycle
+
+  - log: KL15 下电
+  - relay: {resource: KL15, action: "off"}
+
+  - wait: 5
+
+  - log: KL15 上电
+  - relay: {resource: KL15, action: "on"}
+
+  - log: 屏幕应当先黑后亮；上电后长时间不亮即异常
+  - expect_screen:
+      screen: 屏幕2
+      sequence: [dark, lit]
+      timeout: 20
+      since: power_cycle

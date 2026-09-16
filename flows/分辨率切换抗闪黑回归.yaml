@@ -1,0 +1,28 @@
+# 切换分辨率时 HDMI 重新协商，是闪黑最常见的触发点。
+# state: no_black 在整段窗口内持续观察，一旦出现闪黑立刻判失败——
+# 闪黑可能只有 100~300ms，靠事后看当前帧是抓不到的。
+
+name: 分辨率切换抗闪黑回归
+device: box1
+
+on_failure:
+  - snapshot: {screens: all, note: 切分辨率时出现闪黑}
+  - adb_logs: {}
+
+steps:
+  - relay: {action: all_on}
+  - wait: 3
+  - expect_screen: {screen: 屏幕1, state: lit, timeout: 15}
+
+  - log: 切到 1080p50
+  - serial_write: {console: SOC, text: "setmode 1080p50\r\n"}
+  - expect_screen: {screen: 屏幕1, state: no_black, timeout: 10}
+
+  - log: 切到 4K60
+  - serial_write: {console: SOC, text: "setmode 4k60\r\n"}
+  - expect_screen: {screen: 屏幕1, state: no_black, timeout: 10}
+
+  - log: 确认两次切换后画面仍在动
+  - expect_screen: {screen: 屏幕1, state: no_freeze, timeout: 12}
+
+  - relay: {action: all_off}

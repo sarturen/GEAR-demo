@@ -1,0 +1,125 @@
+# GEAR 测试台配置 —— 本文件由程序生成，退出时会整体重写，手写的注释不会保留。
+#
+# 物理设备（板卡、摄像头、串口、SSH）与逻辑资源（具名继电资源、具名监控屏幕、
+# 被测设备）分开声明。用例只引用逻辑名，不出现 COM 口。
+#
+# 字段说明在界面悬停提示里：
+#   relays[].coil_base      第 1 路对应的 Modbus 线圈地址，板子 0 基/1 基不同
+#   relay_channels[]        一条 = 某块板的某一路，作为具名电源资源给用例引用
+#   consoles[].port         例如 COM35；留空时不会打开任何设备
+#   screens[]               一条 = 某个摄像头的某块区域（ROI）+ 该区域的检测参数
+#   devices[].adb_serial    物理序列号，在界面里绑定
+#   devices[].power/consoles/screens   该设备拥有哪些资源（成员关系显式声明）
+#   ssh[].docker_exec       进容器前缀，需自带 shell，如 docker exec -i ctr sh -c
+relays:
+- name: relay1
+  port: ''
+  baudrate: 9600
+  bytesize: 8
+  parity: N
+  stopbits: 1
+  slave_id: 1
+  coil_base: 0
+  timeout: 1.0
+  inter_frame_delay: 0.03
+  pulse_ms: 500
+relay_channels:
+- name: KL15
+  relay: relay1
+  channel: 8
+  pulse_ms: 500
+  description: 点火电源
+- name: KL30
+  relay: relay1
+  channel: 9
+  pulse_ms: 500
+  description: 常电
+consoles:
+- name: SOC
+  port: ''
+  baudrate: 115200
+  bytesize: 8
+  parity: N
+  stopbits: 1
+  encoding: utf-8
+- name: MCU
+  port: ''
+  baudrate: 115200
+  bytesize: 8
+  parity: N
+  stopbits: 1
+  encoding: utf-8
+cameras:
+- name: cam4
+  source: '4'
+  width: 1920
+  height: 1080
+- name: cam5
+  source: '5'
+  width: 1920
+  height: 1080
+- name: cam6
+  source: '6'
+  width: 1920
+  height: 1080
+screens:
+- name: 屏幕1
+  camera: cam4
+  roi:
+    x: 0.0
+    y: 0.0
+    w: 1.0
+    h: 1.0
+  sensitivity: 50
+  freeze_timeout_s: 10.0
+  black_confirm_s: 2.0
+  min_transient_ms: 80.0
+  transient_max_s: 1.5
+- name: 屏幕2
+  camera: cam5
+  roi:
+    x: 0.0
+    y: 0.0
+    w: 1.0
+    h: 1.0
+  sensitivity: 50
+  freeze_timeout_s: 10.0
+  black_confirm_s: 2.0
+  min_transient_ms: 80.0
+  transient_max_s: 1.5
+- name: 屏幕3
+  camera: cam6
+  roi:
+    x: 0.0
+    y: 0.0
+    w: 1.0
+    h: 1.0
+  sensitivity: 50
+  freeze_timeout_s: 10.0
+  black_confirm_s: 2.0
+  min_transient_ms: 80.0
+  transient_max_s: 1.5
+devices:
+- name: box1
+  adb_serial: ''
+  adb_path: adb
+  power:
+  - KL15
+  - KL30
+  consoles:
+  - SOC
+  - MCU
+  screens:
+  - 屏幕1
+  - 屏幕2
+  - 屏幕3
+  description: 主控板
+ssh:
+- name: container
+  host: ''
+  port: 22
+  username: ''
+  password: ''
+  key_file: ''
+  workdir: /root/gear
+  docker_exec: ''
