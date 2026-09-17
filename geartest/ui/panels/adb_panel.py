@@ -151,6 +151,17 @@ class AdbPanel(Panel):
 
     # -- devices ------------------------------------------------------------
 
+    def rebuild(self) -> None:
+        """Re-read the device list after the configuration changed."""
+        self.client = None
+        self.found_combo.clear()
+        self.device_combo.blockSignals(True)
+        self.device_combo.clear()
+        for cfg in self.bench.settings.devices:
+            self.device_combo.addItem(cfg.name)
+        self.device_combo.blockSignals(False)
+        self._load_device()
+
     def _device_cfg(self):
         name = self.device_combo.currentText()
         if not name:

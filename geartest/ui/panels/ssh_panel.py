@@ -162,6 +162,12 @@ class SshPanel(Panel):
 
     # -- config -------------------------------------------------------------
 
+    def rebuild(self) -> None:
+        """Re-read the host list after the configuration changed."""
+        self.host = None
+        self.connect_button.setText("连接")
+        self.refresh_hosts()
+
     def refresh_hosts(self) -> None:
         current = self.host_combo.currentText()
         self.host_combo.blockSignals(True)

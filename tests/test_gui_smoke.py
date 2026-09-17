@@ -85,6 +85,7 @@ def test_window_builds_without_hardware():
         "SSH 容器",
         "监控画面",
         "测试流程",
+        "配置",
     ], titles
     # The status bar must say something useful when nothing is plugged in.
     assert window.statusBar().currentMessage()
@@ -235,6 +236,173 @@ def test_close_event_tears_down():
     finally:
         main_window_module.save_settings = original
     assert saved, "closing must persist the settings"
+
+
+# -- configuration editor ----------------------------------------------------
+
+
+def _panel(settings=None, applied=None):
+    from geartest.ui.panels import settings_panel as module
+
+    app()
+    return module.SettingsPanel(
+        settings or sample_settings(),
+        on_apply=(applied if applied is not None else []).append,
+    ), module
+
+
+def test_settings_panel_has_a_tab_per_section():
+    panel, _ = _panel()
+    titles = [
+        panel.tab_widget.tabText(i) for i in range(panel.tab_widget.count())
+    ]
+    assert titles == [
+        "被测设备",
+        "继电器板",
+        "继电器资源",
+        "串口",
+        "摄像头",
+        "监控屏幕",
+        "SSH 主机",
+    ], titles
+
+
+def test_settings_tables_show_the_configured_rows():
+    panel, _ = _panel()
+    counts = {attr: panel.tabs[attr].table.rowCount() for attr in panel.tabs}
+    assert counts == {
+        "devices": 1,
+        "relays": 1,
+        "relay_channels": 2,
+        "consoles": 2,
+        "cameras": 2,
+        "screens": 2,
+        "ssh": 1,
+    }, counts
+
+
+def test_editing_a_cell_updates_the_working_copy_not_the_live_settings():
+    """Edits are held until 保存并应用, so a half-finished edit is not live."""
+    settings = sample_settings()
+    panel, _ = _panel(settings)
+    panel.items(panel.tabs["relays"].section)[0].port = "COM42"
+    panel.mark_dirty()
+
+    assert panel.dirty
+    assert settings.relays[0].port == "", "未保存前不应改动传入的配置"
+    assert panel.working.relays[0].port == "COM42"
+
+
+def test_adding_and_deleting_rows_refreshes_the_table():
+    panel, _ = _panel()
+    tab = panel.tabs["cameras"]
+    before = tab.table.rowCount()
+    panel.items(tab.section).append(CameraCfg(name="cam9", source="9"))
+    tab.refresh()
+    assert tab.table.rowCount() == before + 1
+
+    del panel.items(tab.section)[-1]
+    tab.refresh()
+    assert tab.table.rowCount() == before
+
+
+def test_validation_problems_reach_the_panel():
+    settings = sample_settings()
+    settings.screens[0].camera = "不存在"
+    panel, _ = _panel(settings)
+    problems = panel.check(verbose=True)
+    assert any("不存在" in p for p in problems), problems
+    assert panel.problems.toPlainText().strip(), "问题应当显示在面板上"
+
+
+def test_saving_an_incoherent_bench_is_refused():
+    settings = sample_settings()
+    applied: list = []
+    panel, module = _panel(settings, applied)
+    # Create the problem the way the UI would, so the edit is pending.
+    panel.items(panel.tabs["devices"].section)[0].power.append("KL99")
+    panel.mark_dirty()
+
+    written: list = []
+    original = module.save_settings
+    module.save_settings = lambda *a, **k: written.append(a)
+    try:
+        panel.save()
+    finally:
+        module.save_settings = original
+
+    assert not written, "有问题的配置不应被写盘"
+    assert not applied, "有问题的配置不应被应用"
+    assert panel.dirty, "保存失败后应当仍然标记为未保存"
+    assert "未保存" in panel._status.text(), panel._status.text()
+
+
+def test_an_invalid_config_on_disk_is_reported_not_hidden():
+    """Loading a bench that is already broken must surface the problems rather
+    than look fine until a flow reaches for the missing resource."""
+    settings = sample_settings()
+    settings.screens[0].camera = "不存在"
+    panel, _ = _panel(settings)
+    assert not panel.dirty, "载入即有问题不算未保存的改动"
+    assert "不存在" in panel.problems.toPlainText(), panel.problems.toPlainText()
+
+
+def test_saving_a_coherent_bench_writes_and_applies():
+    settings = sample_settings()
+    applied: list = []
+    panel, module = _panel(settings, applied)
+    panel.items(panel.tabs["relays"].section)[0].port = "COM42"
+    panel.dirty = True
+
+    written: list = []
+    original = module.save_settings
+    module.save_settings = lambda target, *a, **k: written.append(target)
+    try:
+        panel.save()
+    finally:
+        module.save_settings = original
+
+    assert written, "应当写盘"
+    assert written[0].relays[0].port == "COM42"
+    assert applied, "应当回调应用"
+    assert applied[0].relays[0].port == "COM42"
+    assert not panel.dirty
+    assert "已保存" in panel._status.text(), panel._status.text()
+
+
+def test_deleting_a_referenced_resource_warns():
+    panel, _ = _panel()
+    channel = panel.working.relay_channels[0]  # KL15, listed by box1
+    warnings = panel.deletion_warnings(panel.tabs["relay_channels"].section, channel)
+    assert any("box1" in w for w in warnings), warnings
+
+    camera = panel.working.cameras[0]
+    warnings = panel.deletion_warnings(panel.tabs["cameras"].section, camera)
+    assert any("屏幕1" in w for w in warnings), warnings
+
+
+def test_applying_settings_rebuilds_the_panels():
+    """Saving must not require a restart: the panels re-read the new bench."""
+    from geartest.config import RelayChannelCfg
+
+    app()
+    window = MainWindow(sample_settings())
+    changed = sample_settings()
+    changed.relay_channels.append(
+        RelayChannelCfg(name="KL31", relay="relay1", channel=10)
+    )
+    changed.devices[0].power.append("KL31")
+    window.apply_settings(changed)
+
+    assert window.bench.settings is changed
+    assert len(window.relay_panel.rows) == 1
+    # The rail list follows the new definition.
+    labels = [
+        window.relay_panel.rails_grid.itemAtPosition(row, 0).widget().text()
+        for row in range(3)
+    ]
+    assert labels == ["KL15", "KL30", "KL31"], labels
+    window.shutdown_panels()
 
 
 def main() -> int:

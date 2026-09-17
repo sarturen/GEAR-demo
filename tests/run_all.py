@@ -16,6 +16,7 @@ SUITES = (
     "test_vision.py",
     "test_relay_modbus.py",
     "test_flow_steps.py",
+    "test_config_schema.py",
     "test_gui_smoke.py",
 )
 

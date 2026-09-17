@@ -49,7 +49,7 @@ run.bat
                  └─ app.exec()
 ```
 
-`MainWindow` 建一个 `Bench`（设备注册表）和一个 `Recorder`（录制器），然后挂七个面板：
+`MainWindow` 建一个 `Bench`（设备注册表）和一个 `Recorder`（录制器），然后挂八个面板：
 
 | 面板 | 文件 | 作用 |
 |---|---|---|
@@ -60,6 +60,7 @@ run.bat
 | SSH 容器 | `ui/panels/ssh_panel.py` | 远端容器执行、SFTP |
 | 监控画面 | `ui/panels/camera_panel.py` | 屏幕网格、ROI 拖拽、异常事件表 |
 | 测试流程 | `ui/panels/flow_panel.py` | 加载/运行用例、录制、步骤状态 |
+| 配置 | `ui/panels/settings_panel.py` | 增删改整份 bench 定义，写回 settings.yaml |
 
 想在代码里嵌进别的程序，只要 `from geartest.ui.main_window import MainWindow`，先建 `QApplication` 再传 `Settings` 进去。
 
@@ -108,7 +109,9 @@ devices:
 
 ## 配置：settings.yaml
 
-文件在 `config/settings.yaml`。**程序退出时整体重写**，手写注释不保留（顶部有生成头部说明字段含义）。端口留空时不会打开任何设备。
+文件在 `config/settings.yaml`。**可以不写 YAML**——「配置」页把下面七类全部做成了可增删改的界面，保存时校验并写回本文件。手写也可以，两种方式等价。
+
+程序退出时会整体重写本文件，手写注释不保留（顶部有生成头部说明字段含义）。端口留空时不会打开任何设备。
 
 ### relays[] — 物理继电器板
 
@@ -347,7 +350,17 @@ adb/                 adb 命令输出
 - **串口**：默认「合并」标签页，所有已打开串口按端口分色汇总；每个口另有自己的标签页和发送框。**输出成块刷入**——CH340 在 115200 下一个口每秒能吐几千行，逐行刷会卡死界面。
 - **监控画面**：所有屏幕网格平铺、同时可见，每块可拖拽自己的 ROI；共用一个预览定时器（检测本身在各采集线程上全速跑，预览只是显示）。
 - **测试流程**：步骤表 + 分色日志；勾上「录制手动操作」后，在其它面板上的动作会转成流程步骤，可导出为 YAML 回放。
+- **配置**：七个分区各一个子标签页（被测设备 / 继电器板 / 继电器资源 / 串口 / 摄像头 / 监控屏幕 / SSH 主机），表格 + 新增/编辑/删除/上下移动。编辑先落在**工作副本**上，点「保存并应用」才校验、写盘、并按新配置重建所有面板——**不需要重启**。
 
+  校验会把问题一次列全并标红，例如跨引用：
+
+  ```
+  · 继电器资源[KL15]：relay「relay9」在 relays 里不存在（现有：relay1）
+  · 被测设备[box1] 的 power 引用了不存在的「KL99」（现有：KL15、KL30）
+  ```
+
+  有问题的配置**不会被写盘**。删除一个仍被引用的资源前会先提示影响面（哪个设备/哪块屏在用它）。
+  
 ---
 
 ## 移植到另一台架
@@ -356,11 +369,11 @@ adb/                 adb 命令输出
 
 **1. 改物理绑定（换机器只改这里）**
 
-在对应面板里选端口/视频源/序列号，回车保存；或直接改 `config/settings.yaml` 的 `relays[].port`、`consoles[].port`、`cameras[].source`、`devices[].adb_serial`。
+在「配置」页对应分区里改，或直接改 `config/settings.yaml` 的 `relays[].port`、`consoles[].port`、`cameras[].source`、`devices[].adb_serial`。改完点「保存并应用」，面板会按新配置重建。
 
 **2. 改拓扑（接线变了才改）**
 
-`relay_channels[]` 改名/换路/换板，`screens[]` 改摄像头和 ROI。**用例不用动。**
+「配置」页里改 `relay_channels` / `screens` 的名字、路数、所属板卡和摄像头。**用例不用动。**
 
 **3. 对线圈基址**
 
@@ -382,12 +395,23 @@ adb/                 adb 命令输出
 
 ## 二次开发
 
+### 加一个配置字段
+
+改两处，界面自动跟上：
+
+1. `config.py` 的 dataclass 加字段
+2. `config_schema.py` 的对应 `Section.fields` 加一条 `Field(...)`（标签、`kind`、范围）
+
+`test_config_schema.py` 里的覆盖率测试会**双向**检查这两个列表一致——少写一条就红。字段类型决定控件：`text` / `int` / `float` / `bool` / `choice`（候选下拉）/ `multichoice`（复选列表）/ `roi`。
+
 ### 加一种设备
 
-1. `config.py` 加 dataclass，挂到 `Settings` 上（未知键检查会自动要求它出现）
+1. `config.py` 加 dataclass，挂到 `Settings` 上（未知键检查会自动要求它出现），并在 `config_schema.py` 加一个 `Section`
 2. `devices/` 加驱动，用 `LinePump`（`devices/stream.py`）做流式输出
 3. `bench.py` 加懒加载的 open/close 和资源解析
-4. `ui/panels/` 加面板，在 `main_window.py` 注册标签页
+4. `ui/panels/` 加面板，在 `main_window.py` 注册标签页，并给它一个 `rebuild()`
+
+`rebuild()` 是「保存并应用」调用的——面板必须能从 `bench.settings` 重新读取自己，否则改配置就得重启。
 
 ### 加一个流程步骤
 
@@ -423,14 +447,15 @@ def _step_mything(self, spec) -> str:
 .venv\Scripts\python tests\run_all.py
 ```
 
-四套，共 65 项，**都不需要硬件**：
+五套，共 98 项，**都不需要硬件**：
 
 | 套件 | 项数 | 内容 |
 |---|---|---|
 | `test_vision.py` | 18 | 合成视频驱动检测器：黑屏、泛灰黑屏（各亮度）、蓝色无信号底不误报、亮度渐变不误报且不掩盖冻屏、100/150/300ms 闪黑、单帧损坏不误报、采集停滞与冻屏区分 |
 | `test_relay_modbus.py` | 17 | 桩串口逐字节验证 Modbus 帧、位序、异常码、CRC、超时、脉冲复位 |
 | `test_flow_steps.py` | 20 | 引擎行为：资源解析的两种错误、`all_off` 只动本设备、循环、守护、`on_failure` 不覆盖原始原因、**未校准的 `lit` 必须失败** |
-| `test_gui_smoke.py` | 10 | 离屏建窗、流程解析、录制、ROI 换算、关闭路径 |
+| `test_config_schema.py` | 23 | 配置元数据完整性（见下）、交叉引用校验、取值范围、存读往返 |
+| `test_gui_smoke.py` | 20 | 离屏建窗、配置编辑器的编辑/保存/拒绝非法配置、保存后重建面板、录制、ROI 换算、关闭路径 |
 
 单独跑某一套：`.venv\Scripts\python tests\test_vision.py`
 

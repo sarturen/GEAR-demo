@@ -5,6 +5,7 @@ from .dut_panel import DutPanel
 from .flow_panel import FlowPanel
 from .relay_panel import RelayPanel
 from .serial_panel import SerialPanel
+from .settings_panel import SettingsPanel
 from .ssh_panel import SshPanel
 
 __all__ = [
@@ -13,5 +14,6 @@ __all__ = [
     "FlowPanel",
     "RelayPanel",
     "SerialPanel",
+    "SettingsPanel",
     "SshPanel",
 ]

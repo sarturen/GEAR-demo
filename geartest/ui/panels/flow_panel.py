@@ -124,6 +124,11 @@ class FlowPanel(Panel):
 
     # -- flows --------------------------------------------------------------
 
+    def rebuild(self) -> None:
+        """Re-read after the configuration changed; flows themselves are files."""
+        self.engine = FlowEngine(self.bench, on_log=self.log_line.emit)
+        self.refresh_flows()
+
     def refresh_flows(self) -> None:
         FLOW_DIR.mkdir(parents=True, exist_ok=True)
         current = self.flow_combo.currentText()

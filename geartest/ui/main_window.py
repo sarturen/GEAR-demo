@@ -19,6 +19,7 @@ from .panels.dut_panel import DutPanel
 from .panels.flow_panel import FlowPanel
 from .panels.relay_panel import RelayPanel
 from .panels.serial_panel import SerialPanel
+from .panels.settings_panel import SettingsPanel
 from .panels.ssh_panel import SshPanel
 from .worker import drain
 
@@ -48,6 +49,7 @@ class MainWindow(QMainWindow):
         self.camera_panel = CameraPanel(self.bench)
         self.dut_panel = DutPanel(self.bench)
         self.flow_panel = FlowPanel(self.bench, self.recorder)
+        self.settings_panel = SettingsPanel(settings, on_apply=self.apply_settings)
 
         for panel, title in (
             (self.dut_panel, "被测设备"),
@@ -57,6 +59,7 @@ class MainWindow(QMainWindow):
             (self.ssh_panel, "SSH 容器"),
             (self.camera_panel, "监控画面"),
             (self.flow_panel, "测试流程"),
+            (self.settings_panel, "配置"),
         ):
             self.tabs.addTab(panel, title)
         self.setCentralWidget(self.tabs)
@@ -113,6 +116,31 @@ class MainWindow(QMainWindow):
             self._show_error(f"保存配置失败：{exc}")
             return
         self.statusBar().showMessage(f"配置已保存到 {SETTINGS_PATH}", 5000)
+
+    def apply_settings(self, settings: Settings) -> None:
+        """Swap the bench definition in and rebuild every panel, no restart.
+
+        Everything open was opened against the previous definition, so all of it
+        is closed first. Closing a relay board releases only its serial port --
+        the coil keeps its last physical state, so this does not cut power.
+        """
+        self.bench.reload(settings)
+        self.settings = settings
+        for panel in (
+            self.dut_panel,
+            self.relay_panel,
+            self.serial_panel,
+            self.adb_panel,
+            self.ssh_panel,
+            self.camera_panel,
+            self.flow_panel,
+        ):
+            rebuild = getattr(panel, "rebuild", None)
+            if rebuild is not None:
+                rebuild()
+        self.statusBar().showMessage(
+            "配置已应用：所有连接已按新配置重建（继电器保持上次的物理状态）", 10000
+        )
 
     def refresh_devices(self) -> None:
         self.relay_panel.refresh_ports()
@@ -178,6 +206,7 @@ class MainWindow(QMainWindow):
             self.dut_panel,
             self.adb_panel,
             self.ssh_panel,
+            self.settings_panel,
         ):
             shutdown = getattr(panel, "shutdown", None)
             if shutdown is not None:

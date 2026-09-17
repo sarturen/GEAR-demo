@@ -363,6 +363,16 @@ class Bench:
 
     # -- teardown -----------------------------------------------------------
 
+    def reload(self, settings: Settings) -> None:
+        """Swap in a new bench definition.
+
+        Everything currently open was opened against the old definition, so it
+        all goes first. Note that closing a relay board only releases its serial
+        port -- the coil keeps its last physical state.
+        """
+        self.close_all()
+        self.settings = settings
+
     def close_all(self) -> None:
         for name in list(self.screens):
             self.stop_screen(name)
